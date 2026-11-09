@@ -1,41 +1,61 @@
 
 import { useEffect } from "react";
+
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
+  Polyline,
   useMap,
 } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
 
-function MapUpdater({ location }) {
+function MapUpdater({ pickupLocation, destination, routeInfo }) {
   const map = useMap();
 
   useEffect(() => {
-    if (location?.latitude != null && location?.longitude != null) {
-      map.invalidateSize();
-      map.setView(
-        [location.latitude, location.longitude],
+    if (routeInfo?.geometry?.coordinates?.length) {
+      const routeCoordinates =
+        routeInfo.geometry.coordinates.map(
+          ([longitude, latitude]) => [latitude, longitude]
+        );
+
+      map.fitBounds(routeCoordinates, {
+        padding: [50, 50],
+      });
+    } else if (destination) {
+      map.flyTo(
+        [destination.latitude, destination.longitude],
         15,
-        { animate: true }
+        { duration: 1.5 }
+      );
+    } else if (pickupLocation) {
+      map.flyTo(
+        [pickupLocation.latitude, pickupLocation.longitude],
+        13
       );
     }
-  }, [location, map]);
+  }, [map, pickupLocation, destination, routeInfo]);
 
   return null;
 }
 
-const MapView = ({ selectedLocation }) => {
-  const center = [9.03, 38.74];
+function MapView({
+  pickupLocation,
+  destination,
+  routeInfo,
+}) {
+  const center = [
+    pickupLocation.latitude,
+    pickupLocation.longitude,
+  ];
 
-  const markerPosition = selectedLocation
-    ? [
-        selectedLocation.latitude,
-        selectedLocation.longitude,
-      ]
-    : center;
+  const routeCoordinates =
+    routeInfo?.geometry?.coordinates?.map(
+      ([longitude, latitude]) => [latitude, longitude]
+    ) || [];
 
   return (
     <MapContainer
@@ -44,21 +64,50 @@ const MapView = ({ selectedLocation }) => {
       className="h-full w-full"
     >
       <TileLayer
-        attribution='&copy; OpenStreetMap contributors'
+        attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <MapUpdater location={selectedLocation} />
+      <MapUpdater
+        pickupLocation={pickupLocation}
+        destination={destination}
+        routeInfo={routeInfo}
+      />
 
-      <Marker position={markerPosition}>
-        <Popup>
-          {selectedLocation
-            ? selectedLocation.address
-            : "Starting location"}
-        </Popup>
+      <Marker
+        position={[
+          pickupLocation.latitude,
+          pickupLocation.longitude,
+        ]}
+      >
+        <Popup>Pickup: {pickupLocation.name}</Popup>
       </Marker>
+
+      {destination && (
+        <Marker
+          position={[
+            destination.latitude,
+            destination.longitude,
+          ]}
+        >
+          <Popup>
+            Destination: {destination.address}
+          </Popup>
+        </Marker>
+      )}
+
+      {routeCoordinates.length > 0 && (
+        <Polyline
+          positions={routeCoordinates}
+          pathOptions={{
+            color: "#2563eb",
+            weight: 6,
+            opacity: 0.8,
+          }}
+        />
+      )}
     </MapContainer>
   );
-};
+}
 
 export default MapView;
