@@ -1,94 +1,112 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { searchLocations } from "../services/peliasService";
 
-const PELIAS_URL = "https://pelias.mapc.org/v1";
-
-function LocationSearch({ onSelectLocation }) {
+function LocationSearch({
+  label,
+  placeholder,
+  selectedLocation,
+  onSelectLocation,
+}) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState(false);
 
-  const searchLocations = async (value) => {
-    setQuery(value);
-
-    if (value.trim().length < 3) {
+  useEffect(() => {
+    if (selected || query.trim().length < 3) {
       setSuggestions([]);
+      setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
+    const controller = new AbortController();
 
-      const params = new URLSearchParams({
-        text: value,
-        size: "5",
-      });
+    const timer = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError("");
 
-      const response = await fetch(
-        `${PELIAS_URL}/autocomplete?${params}`
-      );
+        const results = await searchLocations(
+          query,
+          controller.signal
+        );
 
-      if (!response.ok) {
-        throw new Error("Failed to search locations");
+        setSuggestions(results);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setError("Unable to search locations.");
+          setSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
+    }, 350);
 
-      const data = await response.json();
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, selected]);
 
-      setSuggestions(data.features || []);
-    } catch (error) {
-      console.error(error);
-      setSuggestions([]);
-    } finally {
-      setLoading(false);
+  const handleSelect = (location) => {
+    setSelected(true);
+    setQuery(location.address);
+    setSuggestions([]);
+    onSelectLocation(location);
+  };
+
+  const handleChange = (value) => {
+    setQuery(value);
+    setSelected(false);
+    setSuggestions([]);
+
+    if (selectedLocation) {
+      onSelectLocation(null);
     }
   };
 
-  const handleSelect = (feature) => {
-    if (!feature?.geometry?.coordinates) return;
-
-    const location = {
-      name: feature.properties?.name || "",
-      address: feature.properties?.label || feature.properties?.name || "",
-      longitude: feature.geometry.coordinates[0],
-      latitude: feature.geometry.coordinates[1],
-    };
-
-    onSelectLocation(location);
-
-    setQuery(location.address);
-    setSuggestions([]);
-  };
-
   return (
-    <div className="relative w-full max-w-md">
+    <div className="relative w-full">
+      <label className="mb-2 block text-sm font-semibold">
+        {label}
+      </label>
+
       <input
         type="text"
         value={query}
-        onChange={(e) => searchLocations(e.target.value)}
-        placeholder="Search a destination..."
-        className="w-full rounded-lg border bg-white p-3 shadow"
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-gray-300 bg-white p-3 outline-none focus:border-blue-500"
       />
 
       {loading && (
-        <p className="p-2 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-gray-500">
           Searching...
         </p>
       )}
 
+      {error && (
+        <p className="mt-1 text-sm text-red-500">{error}</p>
+      )}
+
       {suggestions.length > 0 && (
-        <ul className="absolute z-[1000] mt-1 w-full rounded-lg bg-white shadow-lg">
-          {suggestions.map((feature) => (
+        <ul className="absolute z-[1100] mt-1 max-h-60 w-full overflow-y-auto rounded-lg border bg-white shadow-xl">
+          {suggestions.map((location, index) => (
             <li
-              key={feature.properties.gid}
-              onClick={() => handleSelect(feature)}
-              className="cursor-pointer border-b p-3 hover:bg-gray-100"
+              key={location.id || index}
+              onClick={() => handleSelect(location)}
+              className="cursor-pointer border-b p-3 hover:bg-blue-50"
             >
               <p className="font-medium">
-                {feature.properties.name}
+                {location.name}
               </p>
 
               <p className="text-sm text-gray-500">
-                {feature.properties.label}
+                {location.address}
               </p>
             </li>
           ))}
